@@ -1,0 +1,516 @@
+/* =========================================================================
+ * 京王線 3D 路線図ビューア スタイル
+ * 背景は「無し」の要件 → 線路だけが浮かぶよう、シーン背景は深い無地。
+ * (Three.js は透過。body の落ち着いた無地が背景＝オブジェクトは線路のみ)
+ * ========================================================================= */
+:root {
+  --keio-pink: #d2227f;
+  --panel-bg: rgba(16, 20, 28, 0.86);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text: #eef2f6;
+  --text-dim: #9aa6b2;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+  color: var(--text);
+  /* 背景はオブジェクト無しの無地グラデーション（線路だけが浮く） */
+  background:
+    radial-gradient(ellipse at 50% 30%, #1b2330 0%, #0c0f15 60%, #06080c 100%);
+  overflow: hidden;
+}
+
+/* 3Dシーン：全画面 */
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+}
+#scene canvas { display: block; }
+
+/* ヘッダー */
+#app-header {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 10;
+  padding: 18px 24px;
+  pointer-events: none;
+}
+#app-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-shadow: 0 2px 12px rgba(0,0,0,.6);
+}
+.logo-dot {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--keio-pink);
+  box-shadow: 0 0 14px var(--keio-pink);
+}
+.subtitle {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-shadow: 0 1px 6px rgba(0,0,0,.6);
+}
+
+/* コントロールパネル */
+#control-panel {
+  position: fixed;
+  top: 92px; right: 18px;
+  z-index: 12;
+  width: 256px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px 16px 18px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 16px 40px rgba(0,0,0,.45);
+  transition: transform .3s ease, opacity .3s ease;
+}
+#control-panel.hidden {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel-block { margin-bottom: 18px; }
+.panel-block:last-child { margin-bottom: 0; }
+.panel-block h2 {
+  font-size: 12px;
+  letter-spacing: .08em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 5px;
+}
+
+/* 路線トグル */
+.line-toggles { list-style: none; }
+.line-toggles li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.line-toggles li:hover { background: rgba(255,255,255,.05); }
+.line-toggles .swatch {
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+.line-toggles input { accent-color: var(--keio-pink); cursor: pointer; }
+.line-toggles .line-name {
+  flex: 1;
+  font-size: 13.5px;
+}
+.line-toggles .line-name:hover { text-decoration: underline; }
+.line-toggles li.off .line-name { color: var(--text-dim); opacity: .55; }
+
+/* ボタン・コントロール */
+.control-row { margin-top: 4px; }
+.btn {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.btn:hover { background: rgba(255,255,255,.12); }
+.btn:active { transform: scale(.98); }
+.btn-primary {
+  background: var(--keio-pink);
+  border-color: var(--keio-pink);
+  font-weight: 700;
+}
+.btn-primary:hover { background: #e0379a; }
+
+.slider-label {
+  display: block;
+  font-size: 13px;
+  margin-top: 10px;
+}
+.slider-label input[type="range"] {
+  width: 100%;
+  margin-top: 6px;
+  accent-color: var(--keio-pink);
+}
+#speed-val { float: right; color: var(--keio-pink); font-weight: 700; }
+
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.check-label input { accent-color: var(--keio-pink); }
+
+/* 方向パッド（視点を上下左右に動かす） */
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-areas:
+    ".    up    ."
+    "left center right"
+    ".    down  .";
+  gap: 5px;
+  width: 150px;
+  margin: 2px auto 10px;
+}
+.dpad-btn {
+  border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  border-radius: 9px;
+  height: 38px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .12s, transform .08s;
+  user-select: none;
+}
+.dpad-btn:hover { background: rgba(255,255,255,.16); }
+.dpad-btn:active { transform: scale(.92); background: var(--keio-pink); }
+.dpad-up { grid-area: up; }
+.dpad-left { grid-area: left; }
+.dpad-center { grid-area: center; color: var(--text-dim); }
+.dpad-right { grid-area: right; }
+.dpad-down { grid-area: down; }
+
+.orbit-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.btn-mini {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 11.5px;
+  user-select: none;
+}
+
+/* 運行モード切替 */
+.mode-switch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 9px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.05);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .15s;
+}
+.mode-btn:hover { background: rgba(255,255,255,.12); color: var(--text); }
+.mode-btn.active {
+  background: var(--keio-pink);
+  border-color: var(--keio-pink);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* 時刻表モード：デジタル時計 */
+.sim-clock {
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 30px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 2px;
+  color: #fff;
+  background: rgba(0,0,0,.35);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 8px 0;
+  margin: 4px 0 10px;
+  text-shadow: 0 0 12px rgba(210,34,127,.6);
+}
+#time-range { width: 100%; accent-color: var(--keio-pink); }
+.time-jump {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+.mode-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+.hint ul { list-style: none; }
+.hint li {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 3px 0;
+}
+
+/* パネル開閉ボタン（モバイル用） */
+#panel-toggle {
+  position: fixed;
+  top: 18px; right: 18px;
+  z-index: 13;
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: none;
+  backdrop-filter: blur(8px);
+}
+
+/* レスポンシブ */
+@media (max-width: 720px) {
+  #panel-toggle { display: block; }
+  #control-panel {
+    top: 70px; right: 12px; left: 12px;
+    width: auto;
+    max-height: 60vh;
+  }
+  #app-header { padding: 14px 16px; }
+  #app-header h1 { font-size: 18px; }
+  .subtitle { display: none; }
+}
+
+/* スクロールバー */
+#control-panel::-webkit-scrollbar { width: 7px; }
+#control-panel::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.15);
+  border-radius: 4px;
+}
+
+/* ===================== 駅情報パネル ===================== */
+.station-panel {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 20;
+  width: 340px;
+  max-width: 92vw;
+  height: 100vh;
+  overflow-y: auto;
+  background: rgba(13, 17, 24, 0.95);
+  border-right: 1px solid var(--panel-border);
+  box-shadow: 8px 0 40px rgba(0,0,0,.5);
+  backdrop-filter: blur(12px);
+  padding: 0 0 30px;
+  animation: slideIn .25s ease;
+}
+.station-panel[hidden] { display: none; }
+@keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
+.station-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px 16px;
+  position: relative;
+  border-bottom: 1px solid var(--panel-border);
+}
+.station-line-badge {
+  width: 8px;
+  align-self: stretch;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.station-title h2 {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.station-title p {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+.station-close {
+  position: absolute;
+  top: 14px; right: 14px;
+  width: 34px; height: 34px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+.station-close:hover { background: rgba(255,255,255,.16); }
+
+.station-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--panel-border);
+  margin: 0;
+}
+.meta-item {
+  background: rgba(20,26,34,.9);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.meta-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: .05em;
+}
+.meta-item span:last-child { font-size: 13px; font-weight: 500; }
+
+.station-section {
+  padding: 16px 18px 6px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.station-section h3 {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: .06em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+/* 種別チップ */
+.type-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 2px solid var(--keio-pink);
+  background: rgba(255,255,255,.05);
+  font-size: 13px;
+  font-weight: 600;
+}
+.chip.pass {
+  border-color: rgba(255,255,255,.2);
+  color: var(--text-dim);
+  text-decoration: line-through;
+  font-weight: 400;
+}
+.pass-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pass-label { font-size: 11px; color: var(--text-dim); }
+
+/* 隣の駅 */
+.neighbors {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.neighbor { color: var(--text); }
+.neighbor-arrow { color: var(--keio-pink); font-weight: 700; font-size: 12px; }
+.connections {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 時刻表 */
+.tt-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.tt-tab {
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.05);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.tt-tab.active {
+  background: var(--keio-pink);
+  border-color: var(--keio-pink);
+  color: #fff;
+  font-weight: 700;
+}
+.tt-caption { margin-bottom: 8px; }
+.timetable { font-size: 13px; }
+.tt-row {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  padding: 5px 0;
+}
+.tt-hour {
+  flex-shrink: 0;
+  width: 34px;
+  font-weight: 700;
+  color: var(--keio-pink);
+  font-family: "SF Mono", monospace;
+}
+.tt-mins { display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.tt-min {
+  font-family: "SF Mono", monospace;
+  position: relative;
+}
+.tt-min sup {
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-left: 1px;
+}
+/* 種別ごとの文字色（時刻表の分表示） */
+.tt-min.type-各停  { color: #aaa; }
+.tt-min.type-快速  { color: #00cc55; }
+.tt-min.type-区急  { color: #ee7711; }
+.tt-min.type-急行  { color: #ff5522; }
+.tt-min.type-特急  { color: #ee1155; }
+.tt-min.type-ライナー { color: #4488ff; font-weight: 700; }
+.tt-min.type-準特急 { color: #cc2288; }
+/* 上記種別のsupも同色に */
+.tt-min.type-快速  sup { color: #00cc55; }
+.tt-min.type-区急  sup { color: #ee7711; }
+.tt-min.type-急行  sup { color: #ff5522; }
+.tt-min.type-特急  sup { color: #ee1155; }
+.tt-min.type-ライナー sup { color: #4488ff; }
+.tt-min.type-準特急 sup { color: #cc2288; }
+
+/* 停車種別チップの種別ごとカラー（passクラスなしの停車チップのみ） */
+.chip.svc-各停:not(.pass)    { border-color: #aaa; color: #ccc; }
+.chip.svc-快速:not(.pass)    { border-color: #00cc55; color: #00cc55; }
+.chip.svc-区急:not(.pass)    { border-color: #ee7711; color: #ee7711; }
+.chip.svc-急行:not(.pass)    { border-color: #ff5522; color: #ff5522; }
+.chip.svc-特急:not(.pass)    { border-color: #ee1155; color: #ee1155; }
+.chip.svc-ライナー:not(.pass) { border-color: #4488ff; color: #4488ff; font-weight: 700; }
+.chip.svc-準特急:not(.pass)  { border-color: #cc2288; color: #cc2288; }
+
+.tt-empty { color: var(--text-dim); font-size: 12.5px; padding: 6px 0; }
+
+.station-panel::-webkit-scrollbar { width: 7px; }
+.station-panel::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.15); border-radius: 4px;
+}
+
+@media (max-width: 720px) {
+  .station-panel { width: 88vw; }
+}

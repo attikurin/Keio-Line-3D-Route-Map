@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>京王線 3D 路線図ビューア</title>
+  <meta name="description" content="京王線・京王相模原線など京王電鉄全路線を、高低差・カーブ・駅・車庫まで再現した3Dインタラクティブ路線図。電車を走らせ360度眺められます。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 3Dシーン（背景透過＝線路だけ表示） -->
+  <main id="scene" aria-label="京王線3D路線図"></main>
+
+  <!-- ヘッダー -->
+  <header id="app-header">
+    <h1><span class="logo-dot"></span>京王線 3D 路線図</h1>
+    <p class="subtitle">高低差・カーブ・駅・車庫を再現／電車を走らせて360度で眺める</p>
+  </header>
+
+  <!-- コントロールパネル -->
+  <aside id="control-panel" aria-label="操作パネル">
+    <section class="panel-block">
+      <h2>路線表示</h2>
+      <ul id="line-toggles" class="line-toggles"></ul>
+    </section>
+
+    <section class="panel-block">
+      <h2>運行モード</h2>
+      <div class="mode-switch" role="group" aria-label="運行モード切替">
+        <button id="mode-normal" class="mode-btn active" data-mode="normal">通常運転</button>
+        <button id="mode-timetable" class="mode-btn" data-mode="timetable">時刻表ダイヤ</button>
+      </div>
+
+      <label class="check-label">
+        <input type="checkbox" id="chk-trains" checked /> 電車を表示
+      </label>
+      <div class="control-row">
+        <button id="btn-run" class="btn btn-primary">⏸ 停止</button>
+      </div>
+
+      <!-- 通常モード用：速度 -->
+      <div id="normal-controls">
+        <label class="slider-label" for="speed-range">速度
+          <input type="range" id="speed-range" min="0.2" max="3" step="0.1" value="1" />
+          <span id="speed-val">1.0×</span>
+        </label>
+      </div>
+
+      <!-- 時刻表モード用：時計・時刻送り・倍速 -->
+      <div id="timetable-controls" hidden>
+        <div class="sim-clock" id="sim-clock">07:00:00</div>
+        <input type="range" id="time-range" min="0" max="86340" step="60" value="25200" aria-label="時刻スライダー" />
+        <div class="time-jump">
+          <button class="btn btn-mini" data-jump="-3600">−1時間</button>
+          <button class="btn btn-mini" data-jump="-600">−10分</button>
+          <button class="btn btn-mini" data-jump="600">＋10分</button>
+          <button class="btn btn-mini" data-jump="3600">＋1時間</button>
+        </div>
+        <div class="time-jump">
+          <button class="btn btn-mini" data-settime="25200">朝 07:00</button>
+          <button class="btn btn-mini" data-settime="43200">昼 12:00</button>
+          <button class="btn btn-mini" data-settime="64800">夕 18:00</button>
+          <button class="btn btn-mini" data-settime="82800">夜 23:00</button>
+        </div>
+        <label class="slider-label" for="rate-range">再生速度
+          <input type="range" id="rate-range" min="10" max="600" step="10" value="60" />
+          <span id="rate-val">60×</span>
+        </label>
+        <p class="mode-note">実際の標準ダイヤ（所要時間・運行間隔・停車）を再現しています。種別ごとに通過駅も再現。</p>
+      </div>
+    </section>
+
+    <section class="panel-block">
+      <h2>視点を動かす</h2>
+      <div class="dpad" role="group" aria-label="視点移動">
+        <button class="dpad-btn dpad-up"    data-pan="up"    aria-label="上へ">▲</button>
+        <button class="dpad-btn dpad-left"  data-pan="left"  aria-label="左へ">◀</button>
+        <button class="dpad-btn dpad-center" data-action="reset" aria-label="中央">＋</button>
+        <button class="dpad-btn dpad-right" data-pan="right" aria-label="右へ">▶</button>
+        <button class="dpad-btn dpad-down"  data-pan="down"  aria-label="下へ">▼</button>
+      </div>
+      <div class="orbit-row">
+        <button class="btn btn-mini" data-orbit="left">⟲ 回転</button>
+        <button class="btn btn-mini" data-orbit="right">回転 ⟳</button>
+      </div>
+      <div class="orbit-row">
+        <button class="btn btn-mini" data-orbit="up">⤒ 見下ろす</button>
+        <button class="btn btn-mini" data-orbit="down">⤓ 見上げる</button>
+      </div>
+      <div class="orbit-row">
+        <button class="btn btn-mini" data-zoom="in">🔍＋ 寄る</button>
+        <button class="btn btn-mini" data-zoom="out">🔍－ 引く</button>
+      </div>
+    </section>
+
+    <section class="panel-block">
+      <h2>表示</h2>
+      <label class="check-label">
+        <input type="checkbox" id="chk-labels" checked /> 駅名ラベル
+      </label>
+      <div class="control-row">
+        <button id="btn-reset" class="btn">全体表示にリセット</button>
+      </div>
+    </section>
+
+    <section class="panel-block hint">
+      <h2>操作方法</h2>
+      <ul>
+        <li>🖱 ドラッグ：360度回転</li>
+        <li>🖱 右ドラッグ：上下左右に移動</li>
+        <li>⌨ 矢印キー：上下左右に移動</li>
+        <li>🖲 ホイール：ズーム</li>
+        <li>方向パッド：視点を上下左右へ</li>
+        <li>路線名クリック：その路線へ寄る</li>
+        <li>🚉 駅をクリック：駅情報・時刻表</li>
+      </ul>
+    </section>
+  </aside>
+
+  <button id="panel-toggle" aria-label="パネル開閉">☰</button>
+
+  <!-- 駅情報パネル（駅クリックで表示） -->
+  <aside id="station-panel" class="station-panel" hidden aria-label="駅情報">
+    <header class="station-head">
+      <span class="station-line-badge" id="station-line-badge"></span>
+      <div class="station-title">
+        <h2 id="station-name">駅名</h2>
+        <p id="station-line-name">路線名</p>
+      </div>
+      <button id="station-close" class="station-close" aria-label="閉じる">×</button>
+    </header>
+
+    <section class="station-meta">
+      <div class="meta-item"><span class="meta-label">駅順</span><span id="station-order">-</span></div>
+      <div class="meta-item"><span class="meta-label">線路</span><span id="station-track">-</span></div>
+      <div class="meta-item"><span class="meta-label">構造</span><span id="station-grade">-</span></div>
+      <div class="meta-item"><span class="meta-label">待避</span><span id="station-passing">-</span></div>
+    </section>
+
+    <section class="station-section">
+      <h3>停車する種別</h3>
+      <div id="station-stops" class="type-chips"></div>
+      <div id="station-pass-wrap" class="pass-wrap" hidden>
+        <span class="pass-label">通過</span>
+        <div id="station-passtypes" class="type-chips pass"></div>
+      </div>
+    </section>
+
+    <section class="station-section">
+      <h3>隣の駅</h3>
+      <div class="neighbors">
+        <span id="station-prev" class="neighbor">―</span>
+        <span class="neighbor-arrow">◀ 当駅 ▶</span>
+        <span id="station-next" class="neighbor">―</span>
+      </div>
+      <p id="station-connections" class="connections"></p>
+    </section>
+
+    <section class="station-section">
+      <div class="tt-tabs">
+        <button class="tt-tab active" data-dir="down">▶ <span id="tt-down-dest">下り</span>方面</button>
+        <button class="tt-tab" data-dir="up">◀ <span id="tt-up-dest">上り</span>方面</button>
+      </div>
+      <h3 class="tt-caption">発車時刻表</h3>
+      <div id="station-timetable" class="timetable"></div>
+    </section>
+  </aside>
+
+  <!-- Three.js モジュール解決用 importmap -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- データ → アプリ の順で読み込み -->
+  <script src="js/data.js"></script>
+  <script type="module" src="js/app.js"></script>
+  <script src="js/ui.js" type="module"></script>
+</body>
+</html>
